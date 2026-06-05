@@ -1,4 +1,4 @@
-import type { LuggageCard, CabinetZone, ReviewAlert } from '../types/game.ts'
+import type { LuggageCard, CabinetZone, ReviewAlert, PlacementRecord, ErrorCategory, ReviewSource } from '../types/game.ts'
 import { isCardCorrectlyPlaced } from '../models/card.ts'
 
 let alertCounter = 0
@@ -68,6 +68,36 @@ export function scanForAnomalies(
   }
 
   return alerts
+}
+
+export function mapAlertToErrorCategory(alertType: ReviewAlert['type']): ErrorCategory {
+  switch (alertType) {
+    case 'wrong-slot': return 'slot-mismatch'
+    case 'unmarked-damage': return 'unmarked-anomaly'
+    case 'conflict': return 'conflict'
+    case 'locked-warning': return 'locked-placement'
+  }
+}
+
+export function mapAlertToReviewSource(_alertType: ReviewAlert['type']): ReviewSource {
+  return 'auto-scan'
+}
+
+export function updatePlacementRecordFromAlert(
+  records: PlacementRecord[],
+  cardId: string,
+  errorCategory: ErrorCategory,
+  errorMessage: string,
+  reviewSource: ReviewSource
+): void {
+  for (let i = records.length - 1; i >= 0; i--) {
+    if (records[i].cardId === cardId && records[i].actualSlotId !== null) {
+      records[i].errorCategory = errorCategory
+      records[i].errorMessage = errorMessage
+      records[i].reviewSource = reviewSource
+      break
+    }
+  }
 }
 
 export function shouldReview(elapsedSeconds: number, lastReviewAt: number): boolean {

@@ -3,6 +3,9 @@ export type TimeSlot = '08:00-10:00' | '10:00-12:00' | '14:00-16:00'
 export type CardStatus = 'normal' | 'pending' | 'damaged' | 'locked'
 export type Difficulty = 'easy' | 'medium' | 'hard'
 export type GamePhase = 'start' | 'playing' | 'ended'
+export type PlacementResult = 'correct' | 'wrong-zone' | 'wrong-slot' | 'wrong-time' | 'unplaced'
+export type ErrorCategory = 'zone-mismatch' | 'slot-mismatch' | 'time-mismatch' | 'unmarked-anomaly' | 'conflict' | 'locked-placement' | 'none'
+export type ReviewSource = 'auto-scan' | 'manual-check' | 'hint-triggered' | 'none'
 
 export interface CabinetZone {
   zoneId: ZoneId
@@ -45,6 +48,28 @@ export interface ReviewAlert {
   timestamp: number
 }
 
+export interface PlacementRecord {
+  cardId: string
+  expectedSlotId: string
+  actualSlotId: string | null
+  result: PlacementResult
+  errorCategory: ErrorCategory
+  errorMessage: string
+  reviewSource: ReviewSource
+  statusAtPlace: CardStatus
+  isAnomaly: boolean
+  timestamp: number
+}
+
+export interface ScoreDetail {
+  itemId: string
+  category: 'correct-placement' | 'wrong-penalty' | 'anomaly-bonus' | 'time-bonus' | 'remove-penalty'
+  cardId: string | null
+  points: number
+  description: string
+  timestamp: number
+}
+
 export interface GameSession {
   sessionId: string
   score: number
@@ -57,6 +82,8 @@ export interface GameSession {
   zones: CabinetZone[]
   hints: HintMessage[]
   alerts: ReviewAlert[]
+  placementRecords: PlacementRecord[]
+  scoreDetails: ScoreDetail[]
 }
 
 export interface DragState {

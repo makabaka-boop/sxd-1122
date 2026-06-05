@@ -3,7 +3,7 @@ import { createSession, isGameComplete, calculateFinalScore, getStarRating } fro
 import { findSlotById } from '../models/cabinet.ts'
 import { findCardById, isCardCorrectlyPlaced } from '../models/card.ts'
 import { generateHint, shouldGiveHint } from '../services/hint.ts'
-import { scanForAnomalies, shouldReview } from '../services/reviewer.ts'
+import { scanForAnomalies, shouldReview, mapAlertToErrorCategory, mapAlertToReviewSource, updatePlacementRecordFromAlert } from '../services/reviewer.ts'
 import { onCardPlaced, onCardRemoved } from '../services/scorer.ts'
 import { renderCabinetZone, clearSlotMark } from './cabinet.ts'
 import { renderLuggageCard, updateCardStatus } from './card.ts'
@@ -11,9 +11,10 @@ import { ContextMenu } from './context-menu.ts'
 import { renderHintPanel, addHintToPanel } from './hint-panel.ts'
 import { showReviewAlert } from './review-modal.ts'
 import { renderScoreboard, updateScoreboard } from './scoreboard.ts'
+import { renderReplayView } from './replay-view.ts'
 import { createDragState } from '../utils/drag.ts'
 import { setupDropTarget } from '../utils/drag.ts'
-import { saveSession, loadSession, clearSession } from '../utils/storage.ts'
+import { saveSession, loadSession, clearSession, saveReplayData, loadReplayData } from '../utils/storage.ts'
 
 export class GameView {
   private session: GameSession | null = null
@@ -68,10 +69,24 @@ export class GameView {
     resumeBtn.style.display = loadSession() ? 'inline-block' : 'none'
     resumeBtn.addEventListener('click', () => this.resumeGame())
 
+    const replayBtn = document.createElement('button')
+    replayBtn.className = 'resume-btn'
+    replayBtn.style.marginLeft = '12px'
+    replayBtn.textContent = '查看上次复盘'
+    const savedReplay = loadReplayData()
+    replayBtn.style.display = savedReplay ? 'inline-block' : 'none'
+    replayBtn.addEventListener('click', () => this.showReplayFromStorage())
+
+    const btnRow = document.createElement('div')
+    btnRow.style.display = 'flex'
+    btnRow.style.gap = '12px'
+    btnRow.appendChild(resumeBtn)
+    btnRow.appendChild(replayBtn)
+
     screen.appendChild(title)
     screen.appendChild(subtitle)
     screen.appendChild(diffContainer)
-    screen.appendChild(resumeBtn)
+    screen.appendChild(btnRow)
     this.appEl.appendChild(screen)
   }
 
@@ -240,7 +255,7 @@ export class GameView {
     card.isPlaced = true
     card.placedSlotId = slotId
 
-    onCardPlaced(this.session, cardId)
+    onCardPlaced(this.session, cardId, slot.zoneId, slot.timeSlot)
 
     const cardEl = document.querySelector(`[data-card-id="${cardId}"]`)
     if (cardEl) {
@@ -350,6 +365,17 @@ export class GameView {
           if (alerts.length > 0) {
             const alert = alerts[0]
             this.session.alerts.push(alert)
+
+            const errorCategory = mapAlertToErrorCategory(alert.type)
+            const reviewSource = mapAlertToReviewSource(alert.type)
+            updatePlacementRecordFromAlert(
+              this.session.placementRecords,
+              alert.cardId,
+              errorCategory,
+              alert.message,
+              reviewSource
+            )
+
             this.reviewModalOpen = true
             showReviewAlert(alert, () => {
               this.reviewModalOpen = false
@@ -382,12 +408,18 @@ export class GameView {
       this.timer = null
     }
 
-    const finalScore = calculateFinalScore(this.session)
-    this.session.score = finalScore
-    const stars = getStarRating(finalScore)
+    const { score, details } = calculateFinalScore(this.session)
+    this.session.score = score
+    this.session.scoreDetails = [...this.session.scoreDetails, ...details]
+    const stars = getStarRating(score)
 
+    saveReplayData(this.session)
     clearSession()
 
+    this.showEndScreen(stars, score)
+  }
+
+  private showEndScreen(stars: number, finalScore: number): void {
     this.appEl.innerHTML = ''
     const screen = document.createElement('div')
     screen.className = 'end-screen'
@@ -408,10 +440,10 @@ export class GameView {
     statsContainer.className = 'stats-container'
 
     const stats = [
-      { label: '正确归位', value: String(this.session.correctCount) },
-      { label: '错误次数', value: String(this.session.errorCount) },
-      { label: '用时', value: `${this.session.elapsedSeconds}秒` },
-      { label: '异常标记', value: String(this.session.cards.filter((c) => c.status !== 'normal').length) },
+      { label: '正确归位', value: String(this.session!.correctCount) },
+      { label: '错误次数', value: String(this.session!.errorCount) },
+      { label: '用时', value: `${this.session!.elapsedSeconds}秒` },
+      { label: '异常标记', value: String(this.session!.cards.filter((c) => c.status !== 'normal').length) },
     ]
 
     for (const stat of stats) {
@@ -421,17 +453,87 @@ export class GameView {
       statsContainer.appendChild(item)
     }
 
+    const btnRow = document.createElement('div')
+    btnRow.className = 'end-btn-row'
+
     const replayBtn = document.createElement('button')
-    replayBtn.className = 'replay-btn'
-    replayBtn.textContent = '再玩一局'
-    replayBtn.addEventListener('click', () => this.showStartScreen())
+    replayBtn.className = 'replay-entry-btn'
+    replayBtn.textContent = '📋 复盘与错因追踪'
+    replayBtn.addEventListener('click', () => this.showReplayView())
+
+    const replayAgainBtn = document.createElement('button')
+    replayAgainBtn.className = 'replay-btn'
+    replayAgainBtn.textContent = '再玩一局'
+    replayAgainBtn.addEventListener('click', () => this.showStartScreen())
+
+    btnRow.appendChild(replayBtn)
+    btnRow.appendChild(replayAgainBtn)
 
     screen.appendChild(title)
     screen.appendChild(starsEl)
     screen.appendChild(scoreEl)
     screen.appendChild(statsContainer)
-    screen.appendChild(replayBtn)
+    screen.appendChild(btnRow)
     this.appEl.appendChild(screen)
+  }
+
+  private showReplayView(): void {
+    if (!this.session) return
+    this.appEl.innerHTML = ''
+
+    const view = renderReplayView(
+      this.session,
+      () => {
+        const stars = getStarRating(this.session!.score)
+        this.showEndScreen(stars, this.session!.score)
+      },
+      (slotId: string) => this.highlightSlotInReplay(slotId),
+      (cardId: string) => this.highlightCardInReplay(cardId)
+    )
+
+    this.appEl.appendChild(view)
+  }
+
+  private showReplayFromStorage(): void {
+    const data = loadReplayData()
+    if (!data) return
+
+    const session: GameSession = {
+      sessionId: data.sessionId,
+      score: data.score,
+      correctCount: data.correctCount,
+      errorCount: data.errorCount,
+      elapsedSeconds: data.elapsedSeconds,
+      difficulty: data.difficulty as GameSession['difficulty'],
+      phase: 'ended',
+      cards: data.cards,
+      zones: data.zones,
+      hints: [],
+      alerts: data.alerts,
+      placementRecords: data.placementRecords,
+      scoreDetails: data.scoreDetails,
+    }
+
+    this.session = session
+    this.showReplayView()
+  }
+
+  private highlightSlotInReplay(slotId: string): void {
+    document.querySelectorAll('.replay-slot-highlight').forEach((el) => el.classList.remove('replay-slot-highlight'))
+    const slotEl = document.querySelector(`[data-slot-id="${slotId}"]`) as HTMLElement
+    if (slotEl) {
+      slotEl.classList.add('replay-slot-highlight')
+      setTimeout(() => slotEl.classList.remove('replay-slot-highlight'), 3000)
+    }
+  }
+
+  private highlightCardInReplay(cardId: string): void {
+    document.querySelectorAll('.replay-card-highlight').forEach((el) => el.classList.remove('replay-card-highlight'))
+    const cardEl = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement
+    if (cardEl) {
+      cardEl.classList.add('replay-card-highlight')
+      setTimeout(() => cardEl.classList.remove('replay-card-highlight'), 3000)
+    }
   }
 
   private resetGame(): void {
