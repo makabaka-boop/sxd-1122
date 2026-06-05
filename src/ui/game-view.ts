@@ -21,6 +21,7 @@ export class GameView {
   private contextMenu: ContextMenu
   private timer: ReturnType<typeof setInterval> | null = null
   private lastReviewAt = 0
+  private reviewModalOpen = false
   private appEl: HTMLElement
 
   constructor(appEl: HTMLElement) {
@@ -344,13 +345,17 @@ export class GameView {
 
       if (shouldReview(this.session.elapsedSeconds, this.lastReviewAt)) {
         this.lastReviewAt = this.session.elapsedSeconds
-        const alerts = scanForAnomalies(this.session.cards, this.session.zones)
-        if (alerts.length > 0) {
-          const alert = alerts[0]
-          this.session.alerts.push(alert)
-          showReviewAlert(alert, () => {
-            saveSession(this.session!)
-          })
+        if (!this.reviewModalOpen) {
+          const alerts = scanForAnomalies(this.session.cards, this.session.zones)
+          if (alerts.length > 0) {
+            const alert = alerts[0]
+            this.session.alerts.push(alert)
+            this.reviewModalOpen = true
+            showReviewAlert(alert, () => {
+              this.reviewModalOpen = false
+              saveSession(this.session!)
+            })
+          }
         }
       }
 

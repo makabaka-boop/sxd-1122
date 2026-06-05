@@ -1,6 +1,7 @@
 import type { GameSession, Difficulty } from '../types/game.ts'
 import { createZones } from './cabinet.ts'
 import { generateCards } from './card.ts'
+import { isCardCorrectlyPlaced } from './card.ts'
 
 export function createSession(difficulty: Difficulty): GameSession {
   const zones = createZones()
@@ -21,7 +22,7 @@ export function createSession(difficulty: Difficulty): GameSession {
 }
 
 export function isGameComplete(session: GameSession): boolean {
-  return session.cards.every((c) => c.isPlaced)
+  return session.cards.every((c) => c.isPlaced && isCardCorrectlyPlaced(c))
 }
 
 export function calculateFinalScore(session: GameSession): number {
