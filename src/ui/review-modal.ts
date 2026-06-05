@@ -1,6 +1,8 @@
 import type { ReviewAlert } from '../types/game.ts'
 
 const TYPE_ICONS: Record<ReviewAlert['type'], string> = {
+  'wrong-zone': '❌',
+  'wrong-time': '❌',
   'wrong-slot': '❌',
   'unmarked-damage': '⚠️',
   conflict: '🔄',

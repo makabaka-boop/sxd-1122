@@ -410,7 +410,7 @@ export class GameView {
 
     const { score, details } = calculateFinalScore(this.session)
     this.session.score = score
-    this.session.scoreDetails = [...this.session.scoreDetails, ...details]
+    this.session.scoreDetails = details
     const stars = getStarRating(score)
 
     saveReplayData(this.session)
@@ -486,9 +486,7 @@ export class GameView {
       () => {
         const stars = getStarRating(this.session!.score)
         this.showEndScreen(stars, this.session!.score)
-      },
-      (slotId: string) => this.highlightSlotInReplay(slotId),
-      (cardId: string) => this.highlightCardInReplay(cardId)
+      }
     )
 
     this.appEl.appendChild(view)
@@ -516,24 +514,6 @@ export class GameView {
 
     this.session = session
     this.showReplayView()
-  }
-
-  private highlightSlotInReplay(slotId: string): void {
-    document.querySelectorAll('.replay-slot-highlight').forEach((el) => el.classList.remove('replay-slot-highlight'))
-    const slotEl = document.querySelector(`[data-slot-id="${slotId}"]`) as HTMLElement
-    if (slotEl) {
-      slotEl.classList.add('replay-slot-highlight')
-      setTimeout(() => slotEl.classList.remove('replay-slot-highlight'), 3000)
-    }
-  }
-
-  private highlightCardInReplay(cardId: string): void {
-    document.querySelectorAll('.replay-card-highlight').forEach((el) => el.classList.remove('replay-card-highlight'))
-    const cardEl = document.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement
-    if (cardEl) {
-      cardEl.classList.add('replay-card-highlight')
-      setTimeout(() => cardEl.classList.remove('replay-card-highlight'), 3000)
-    }
   }
 
   private resetGame(): void {

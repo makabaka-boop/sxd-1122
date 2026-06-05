@@ -1,5 +1,6 @@
-import type { GameSession, PlacementRecord, ScoreDetail, ZoneId, TimeSlot, ErrorCategory } from '../types/game.ts'
+import type { GameSession, PlacementRecord, ScoreDetail, ZoneId, TimeSlot, ErrorCategory, CabinetZone, LuggageCard } from '../types/game.ts'
 import { buildUnplacedRecord } from '../services/scorer.ts'
+import { isCardCorrectlyPlaced } from '../models/card.ts'
 
 const RESULT_LABELS: Record<PlacementRecord['result'], { text: string; cls: string }> = {
   correct: { text: '✔ 正确', cls: 'replay-result-correct' },
@@ -42,9 +43,7 @@ type FilterState = {
 
 export function renderReplayView(
   session: GameSession,
-  onBack: () => void,
-  onHighlightSlot: (slotId: string) => void,
-  onHighlightCard: (cardId: string) => void
+  onBack: () => void
 ): HTMLElement {
   const allRecords = buildFinalRecords(session)
 
@@ -59,19 +58,34 @@ export function renderReplayView(
   const body = document.createElement('div')
   body.className = 'replay-body'
 
+  const topRow = document.createElement('div')
+  topRow.className = 'replay-top-row'
+
+  const cabinetPanel = document.createElement('div')
+  cabinetPanel.className = 'replay-cabinet-panel'
+  cabinetPanel.id = 'replay-cabinet-panel'
+  renderReplayCabinet(session.zones, session.cards, cabinetPanel)
+  topRow.appendChild(cabinetPanel)
+
+  const listPanel = document.createElement('div')
+  listPanel.className = 'replay-list-panel'
+
   const filterBar = createFilterBar(filterState, () => {
     filterState = getCurrentFilters()
     renderRecordList()
   })
-  body.appendChild(filterBar)
+  listPanel.appendChild(filterBar)
 
   const summaryBar = createSummaryBar(allRecords, session.scoreDetails)
-  body.appendChild(summaryBar)
+  listPanel.appendChild(summaryBar)
 
   const recordListContainer = document.createElement('div')
   recordListContainer.className = 'replay-record-list'
   recordListContainer.id = 'replay-record-list'
-  body.appendChild(recordListContainer)
+  listPanel.appendChild(recordListContainer)
+
+  topRow.appendChild(listPanel)
+  body.appendChild(topRow)
 
   const scoreDetailSection = createScoreDetailSection(session.scoreDetails)
   body.appendChild(scoreDetailSection)
@@ -80,6 +94,23 @@ export function renderReplayView(
 
   function getCurrentFilters(): FilterState {
     return filterState
+  }
+
+  function highlightSlot(slotId: string): void {
+    document.querySelectorAll('.replay-slot-highlight').forEach((el) => el.classList.remove('replay-slot-highlight'))
+    const slotEl = cabinetPanel.querySelector(`[data-slot-id="${slotId}"]`) as HTMLElement
+    if (slotEl) {
+      slotEl.classList.add('replay-slot-highlight')
+      slotEl.scrollIntoView({ behavior: 'smooth', block: 'center' })
+    }
+  }
+
+  function highlightCard(cardId: string): void {
+    document.querySelectorAll('.replay-card-highlight').forEach((el) => el.classList.remove('replay-card-highlight'))
+    const cardEl = cabinetPanel.querySelector(`[data-card-id="${cardId}"]`) as HTMLElement
+    if (cardEl) {
+      cardEl.classList.add('replay-card-highlight')
+    }
   }
 
   function renderRecordList(): void {
@@ -93,13 +124,105 @@ export function renderReplayView(
       return
     }
     for (const record of filtered) {
-      const row = createRecordRow(record, onHighlightSlot, onHighlightCard)
+      const row = createRecordRow(record, highlightSlot, highlightCard)
       recordListContainer.appendChild(row)
     }
   }
 
   renderRecordList()
   return container
+}
+
+function renderReplayCabinet(zones: CabinetZone[], cards: LuggageCard[], panel: HTMLElement): void {
+  panel.innerHTML = ''
+
+  const title = document.createElement('h3')
+  title.className = 'replay-section-title'
+  title.textContent = '柜位总览'
+  panel.appendChild(title)
+
+  const cabinetArea = document.createElement('div')
+  cabinetArea.className = 'replay-cabinet-area'
+
+  for (const zone of zones) {
+    const zoneEl = document.createElement('div')
+    zoneEl.className = 'replay-cabinet-zone'
+
+    const zoneHeader = document.createElement('div')
+    zoneHeader.className = 'replay-zone-header'
+
+    const zoneTitle = document.createElement('span')
+    zoneTitle.className = 'replay-zone-title'
+    zoneTitle.textContent = zone.zoneName
+
+    const zoneTime = document.createElement('span')
+    zoneTime.className = 'replay-zone-time'
+    zoneTime.textContent = zone.timeSlot
+
+    zoneHeader.appendChild(zoneTitle)
+    zoneHeader.appendChild(zoneTime)
+    zoneEl.appendChild(zoneHeader)
+
+    const slotsGrid = document.createElement('div')
+    slotsGrid.className = 'replay-slots-grid'
+
+    for (const slot of zone.slots) {
+      const slotEl = document.createElement('div')
+      slotEl.className = 'replay-cabinet-slot'
+      slotEl.dataset.slotId = slot.slotId
+
+      const slotLabel = document.createElement('span')
+      slotLabel.className = 'replay-slot-label'
+      slotLabel.textContent = `${slot.slotNumber}号`
+      slotEl.appendChild(slotLabel)
+
+      const placedCard = cards.find((c) => c.isPlaced && c.placedSlotId === slot.slotId)
+      if (placedCard) {
+        const cardEl = document.createElement('div')
+        cardEl.className = 'replay-slot-card'
+        cardEl.dataset.cardId = placedCard.cardId
+
+        if (isCardCorrectlyPlaced(placedCard)) {
+          cardEl.classList.add('replay-slot-card-correct')
+        } else {
+          cardEl.classList.add('replay-slot-card-wrong')
+        }
+
+        const cardId = document.createElement('span')
+        cardId.className = 'replay-slot-card-id'
+        cardId.textContent = placedCard.cardId.replace('card-', '#')
+
+        const cardInfo = document.createElement('span')
+        cardInfo.className = 'replay-slot-card-info'
+        cardInfo.textContent = `${placedCard.zoneId}-${placedCard.slotNumber}`
+
+        cardEl.appendChild(cardId)
+        cardEl.appendChild(cardInfo)
+
+        if (placedCard.status !== 'normal') {
+          const statusBadge = document.createElement('span')
+          statusBadge.className = 'replay-slot-card-status'
+          const statusText: Record<string, string> = { pending: '待核', damaged: '破损', locked: '锁定' }
+          statusBadge.textContent = statusText[placedCard.status] || ''
+          cardEl.appendChild(statusBadge)
+        }
+
+        slotEl.appendChild(cardEl)
+      } else {
+        const emptyMark = document.createElement('span')
+        emptyMark.className = 'replay-slot-empty'
+        emptyMark.textContent = '空'
+        slotEl.appendChild(emptyMark)
+      }
+
+      slotsGrid.appendChild(slotEl)
+    }
+
+    zoneEl.appendChild(slotsGrid)
+    cabinetArea.appendChild(zoneEl)
+  }
+
+  panel.appendChild(cabinetArea)
 }
 
 function buildFinalRecords(session: GameSession): PlacementRecord[] {
@@ -268,7 +391,7 @@ function createSummaryBar(records: PlacementRecord[], scoreDetails: ScoreDetail[
     { label: '正确归位', value: String(correctCount), cls: 'summary-correct' },
     { label: '归位错误', value: String(wrongCount), cls: 'summary-wrong' },
     { label: '未归位', value: String(unplacedCount), cls: 'summary-unplaced' },
-    { label: '累计得分', value: String(totalPoints), cls: 'summary-score' },
+    { label: '最终得分', value: String(totalPoints), cls: 'summary-score' },
   ]
 
   for (const item of items) {
@@ -345,6 +468,8 @@ function createRecordRow(
     row.classList.add('active')
     if (record.actualSlotId) {
       onHighlightSlot(record.actualSlotId)
+    } else {
+      onHighlightSlot(record.expectedSlotId)
     }
     onHighlightCard(record.cardId)
   })

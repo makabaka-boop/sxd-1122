@@ -44,7 +44,7 @@ export interface ReviewAlert {
   id: string
   cardId: string
   message: string
-  type: 'wrong-slot' | 'unmarked-damage' | 'conflict' | 'locked-warning'
+  type: 'wrong-zone' | 'wrong-time' | 'wrong-slot' | 'unmarked-damage' | 'conflict' | 'locked-warning'
   timestamp: number
 }
 
